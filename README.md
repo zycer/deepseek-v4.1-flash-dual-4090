@@ -19,6 +19,9 @@ written down too, so nobody has to redo them.
 > default behaviours in PyTorch and vLLM work directly against you at this scale.
 > This repo is that write-up.
 
+If this saved you a few days, a star helps other people find it. Questions and
+corrections are welcome as issues.
+
 ---
 
 ## Numbers
