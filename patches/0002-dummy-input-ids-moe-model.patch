@@ -1,0 +1,18 @@
+--- a/vllm/models/deepseek_v4/nvidia/model.py
++++ b/vllm/models/deepseek_v4/nvidia/model.py
+@@ -999,8 +999,13 @@
+         if self.gate.tid2eid is not None and input_ids is None:
+             raise ValueError("DeepSeek V4 hash MoE routing requires input_ids.")
+         if self.gate.e_score_correction_bias_vl is not None and input_ids is None:
+-            raise ValueError(
+-                "DeepSeek V4 mixed text/image MoE routing requires input_ids."
++            # PATCHED: memory-profiling / cudagraph dummy runs carry no
++            # input_ids, but the VL correction bias needs one token id per row.
++            # Treat every dummy token as text (id 0 never maps to an image
++            # placeholder). Real requests always supply input_ids, so this
++            # branch is dead during serving.
++            input_ids = torch.zeros(
++                hidden_states.shape[0], dtype=torch.long, device=hidden_states.device
+             )
+ 
+         if not self.use_mega_moe:

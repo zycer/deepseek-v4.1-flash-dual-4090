@@ -1,0 +1,30 @@
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -660,11 +660,17 @@
+         self.encoder_cudagraph_manager: EncoderCudaGraphManager | None = None
+ 
+         self.use_aux_hidden_state_outputs = False
++        # PATCHED: non-last PP ranks never created `drafter`, yet
++        # _build_attention_metadata() dereferences it unconditionally.
++        self.drafter = None
+         # Set up speculative decoding.
+         # NOTE(Jiayi): currently we put the entire draft model on
+         # the last PP rank. This is not ideal if there are many
+         # layers in the draft model.
+-        if self.speculative_config and get_pp_group().is_last_rank:
++        if self.speculative_config and (
++            get_pp_group().is_last_rank
++            or self.speculative_config.method == "ngram"
++        ):
+             self.drafter: (
+                 NgramProposer  # noqa: F823
+                 | NgramProposerGPU
+@@ -1123,7 +1129,7 @@
+         buf = self.lookback_token_ids
+         buf.np[:num_reqs] = _build_lookback_token_ids(
+             self.input_batch.token_ids_cpu[:num_reqs],
+-            self.input_batch.num_computed_tokens[:num_reqs],
++            self.input_batch.num_computed_tokens_cpu[:num_reqs],
+             self.input_batch.num_prompt_tokens[:num_reqs],
+             buf.np.shape[1],
+         )

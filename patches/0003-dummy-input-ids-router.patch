@@ -1,0 +1,17 @@
+--- a/vllm/models/deepseek_v4_1/nvidia/router.py
++++ b/vllm/models/deepseek_v4_1/nvidia/router.py
+@@ -220,8 +220,12 @@
+         if self.e_score_correction_bias is None:
+             raise ValueError("DeepSeek V4.1 routing requires a correction bias.")
+         if self.e_score_correction_bias_vl is not None and input_ids is None:
+-            raise ValueError(
+-                "DeepSeek V4.1 mixed text/image routing requires input_ids."
++            # PATCHED: profiling / cudagraph dummy runs pass no input_ids.
++            # Treat them as text tokens; serving always supplies input_ids.
++            input_ids = torch.zeros(
++                router_logits.shape[0],
++                dtype=torch.long,
++                device=router_logits.device,
+             )
+ 
+         output_indices_dtype = torch.int32 if indices_type is None else indices_type

@@ -1,0 +1,116 @@
+--- a/vllm/models/deepseek_v4_1/common/engram.py
++++ b/vllm/models/deepseek_v4_1/common/engram.py
+@@ -619,6 +619,38 @@
+         )
+ 
+ 
++_CUDART = None
++
++
++def _exact_pinned(numel: int, dtype: torch.dtype, keepalive: list) -> torch.Tensor:
++    """Allocate exactly `numel` elements of UVA-mapped pinned host memory.
++
++    torch's pinned allocator rounds every request up to the next power of two.
++    A 11.44 GiB Engram shard therefore reserves 16 GiB, and with 8 TP ranks x 2
++    Engram layers that waste (~73 GiB) overflows a 256 GiB host. Raw
++    cudaHostAlloc is exact and the result is still UVA addressable, so the
++    Triton lookup kernel can read it straight from the GPU.
++    """
++    global _CUDART
++    import ctypes
++
++    if _CUDART is None:
++        _CUDART = ctypes.CDLL("libcudart.so")
++    nbytes = numel * dtype.itemsize
++    ptr = ctypes.c_void_p()
++    rc = _CUDART.cudaHostAlloc(
++        ctypes.byref(ptr), ctypes.c_size_t(nbytes), ctypes.c_uint(0)
++    )
++    if rc != 0:
++        raise RuntimeError(f"cudaHostAlloc({nbytes}) failed with rc={rc}")
++    buf = (ctypes.c_char * nbytes).from_address(ptr.value)
++    # Keep the ctypes buffer alive for the whole lifetime of the parameter;
++    # dropping it would let CPython free memory the tensor still points at.
++    keepalive.append(buf)
++    keepalive.append(ptr)
++    return torch.frombuffer(buf, dtype=torch.uint8).view(dtype)
++
++
+ class ParallelEngramEmbedding(nn.Module):
+     """The n-gram hash table, sharded by complete hash heads over TP ranks.
+     Rows stay fp8 and are dequantized with ue8m0 per-32 scales on lookup.
+@@ -662,22 +694,31 @@
+ 
+         # Explicit device: model init runs under a `torch.device("cuda")`
+         # context, which would otherwise put the shard in HBM.
+-        kwargs = {"device": "cpu", "pin_memory": True} if cpu_offload else {}
+-        self.weight = nn.Parameter(
+-            torch.empty(
+-                self.part_num_embeddings, dim, dtype=torch.float8_e4m3fn, **kwargs
+-            ),
+-            requires_grad=False,
+-        )
+-        self.weight_scale_inv = nn.Parameter(
+-            torch.empty(
++        # PATCHED: exact-size pinned allocation (see _exact_pinned).
++        self._keepalive: list = []
++        if cpu_offload:
++            weight = _exact_pinned(
++                self.part_num_embeddings * dim,
++                torch.float8_e4m3fn,
++                self._keepalive,
++            ).view(self.part_num_embeddings, dim)
++            scale_ncols = dim // block_size
++            weight_scale_inv = _exact_pinned(
++                self.part_num_embeddings * scale_ncols,
++                torch.uint8,
++                self._keepalive,
++            ).view(self.part_num_embeddings, scale_ncols)
++        else:
++            weight = torch.empty(
++                self.part_num_embeddings, dim, dtype=torch.float8_e4m3fn
++            )
++            weight_scale_inv = torch.empty(
+                 self.part_num_embeddings,
+                 dim // block_size,
+                 dtype=torch.uint8,
+-                **kwargs,
+-            ),
+-            requires_grad=False,
+-        )
++            )
++        self.weight = nn.Parameter(weight, requires_grad=False)
++        self.weight_scale_inv = nn.Parameter(weight_scale_inv, requires_grad=False)
+         for param in (self.weight, self.weight_scale_inv):
+             set_weight_attrs(
+                 param,
+@@ -696,22 +737,15 @@
+             )
+ 
+     def _storage(self) -> tuple[torch.Tensor, torch.Tensor]:
+-        """Parameters when resident, else cached UVA views of the pinned shard.
++        """Pinned shards are UVA addressable, so the host tensors are handed to
++        the Triton kernel as-is: on this driver the host and device pointers of
++        a cudaHostAlloc block are identical, and building an accelerator view
++        per lookup adds nothing.
+ 
+-        Rebuilt if anything swaps `.data`, so a stale device pointer cannot
+-        survive silently.
++        PATCHED: previously returned get_accelerator_view_from_cpu_tensor()
++        views, which re-copies anything whose pinned flag is not set.
+         """
+-        if not self.cpu_offload:
+-            return self.weight.data, self.weight_scale_inv.data
+-        src = (self.weight.data_ptr(), self.weight_scale_inv.data_ptr())
+-        if self._view_src != src:
+-            self._views = (
+-                get_accelerator_view_from_cpu_tensor(self.weight.data),
+-                get_accelerator_view_from_cpu_tensor(self.weight_scale_inv.data),
+-            )
+-            self._view_src = src
+-        assert self._views is not None
+-        return self._views
++        return self.weight.data, self.weight_scale_inv.data
+ 
+     def lookup(
+         self, indices: torch.Tensor, out: torch.Tensor, background: bool = False

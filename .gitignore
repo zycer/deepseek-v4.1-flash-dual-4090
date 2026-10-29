@@ -1,0 +1,20 @@
+# patch overlay produced by scripts/apply-patches.sh
+/patched/
+
+# compile / JIT caches
+/.cache/
+__pycache__/
+*.py[cod]
+
+# local config
+.env
+*.local
+
+# logs and sampling output
+*.log
+mem-*.log
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/

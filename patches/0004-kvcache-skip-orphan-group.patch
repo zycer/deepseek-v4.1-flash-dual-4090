@@ -1,0 +1,30 @@
+--- a/vllm/v1/worker/utils.py
++++ b/vllm/v1/worker/utils.py
+@@ -431,11 +431,25 @@
+     kv_caches: dict[str, torch.Tensor] = {}
+     for tensor in kv_cache_config.kv_cache_tensors:
+         layer_name = tensor.layers[0]
+-        group_id, group = next(
++        _matches = [
+             (group_id, group)
+             for group_id, group in enumerate(kv_cache_config.kv_cache_groups)
+             if layer_name in group.layer_names
+-        )
++        ]
++        if not _matches:
++            # PATCHED: the last pipeline stage also owns the MTP/dspark draft
++            # layers. Their KV specs are not part of any scheduler-facing group,
++            # so the original `next(...)` raised StopIteration and tore down the
++            # whole RPC. Those layers are unused without speculative decoding,
++            # so skip their cache instead of failing to boot.
++            logger.warning(
++                "No KV cache group covers layer %s (draft layer on the last PP "
++                "stage?). Skipping its KV cache. Group layer counts: %s",
++                layer_name,
++                [len(g.layer_names) for g in kv_cache_config.kv_cache_groups],
++            )
++            continue
++        group_id, group = _matches[0]
+         spec = group.kv_cache_spec
+         if isinstance(spec, UniformTypeKVCacheSpecs):
+             spec = spec.kv_cache_specs[layer_name]
