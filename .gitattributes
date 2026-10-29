@@ -1,0 +1,13 @@
+# These files are consumed on Linux (shell scripts, python, patch(1)) -- a CRLF checkout
+# breaks them. Force LF in the repository and in every working tree.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.py    text eol=lf
+*.patch text eol=lf
+*.md    text eol=lf
+
+# binary safety
+*.png   binary
+*.jpg   binary
+*.gif   binary
