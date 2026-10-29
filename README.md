@@ -89,6 +89,40 @@ error messages, is in [`docs/01-constraint-derivation.md`](docs/01-constraint-de
 
 ---
 
+## The image
+
+Stock vLLM cannot run this model. What we used is a community SM89 build:
+
+```
+ghcr.io/yhfgyyf/vllm-deepseek-v4-sm89:0.28.1rc1-vision11-sm89-sm120-cu130
+```
+
+Reading the tag: `0.28.1rc1` is the vLLM baseline, `vision11` means vision input
+support is included, `sm89-sm120` is the set of compute capabilities compiled in
+(4090 is SM89, Blackwell is SM120), and `cu130` is CUDA 13.0.
+
+Metadata of the exact image we ran:
+
+| | |
+|---|---|
+| digest | `sha256:89d95823…`, 11.9 GB, built 2026-09-16 |
+| vLLM | `0.28.1rc1.dev517+glm53.dsv41.vision11.sm89sm120.cu130` |
+| PyTorch | `2.13.0+cu130` |
+| Base image | Ubuntu 24.04 + NVIDIA CUDA 13.0.3 (devel) |
+| Build source | <https://github.com/yhfgyyf/vllm-deepseek-v4-sm89> |
+| Entrypoint | `vllm serve`, so the command line takes the model path directly |
+
+Why it is required: official `vllm/vllm-openai:v0.32.0` has no `DeepseekV4`
+architecture registered at all (nothing matching in `_VLLM_MODELS`) and no
+`fp8_ds_mla` KV layout, so `--kv-cache-dtype` does not exist there. According to the
+image labels, this build also carries DeepSeek-V4-Flash/Vision and GLM-5.3-Flash, and
+covers both SM89 and SM120 in one image.
+
+One caveat: the diffs in `patches/` were written against the files inside this image.
+On a different build every line number will be off and the hunks need re-locating.
+
+---
+
 ## The four patches you will need
 
 The image's DeepSeek-V4 support does not boot on 24 GB cards or 256 GiB hosts. All four
@@ -281,9 +315,8 @@ client reads `reasoning_content`, change that one line.
 - **No process supervision.** `restart=no`, no systemd unit. After a reboot you have to
   bring things up by hand in the order memguard → node A → node B. See
   [`docs/07-troubleshooting.md`](docs/07-troubleshooting.md#recovery-after-reboot).
-- **One image verified.** The official `vllm/vllm-openai:v0.32.0` does not have a
-  `DeepseekV4` architecture in its registry at all. This is built against the community
-  SM89 build above; porting the patches to a newer vLLM means re-locating the hunks.
+- **Only validated on SM89.** The image also compiles SM120, but we had no Blackwell
+  hardware to test on. Moving to a newer vLLM means re-locating the patch hunks.
 
 ---
 

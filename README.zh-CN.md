@@ -84,6 +84,40 @@
 
 ---
 
+## 用的哪个镜像
+
+官方 vLLM 跑不了这个模型，用的是社区构建的 SM89 镜像：
+
+```
+ghcr.io/yhfgyyf/vllm-deepseek-v4-sm89:0.28.1rc1-vision11-sm89-sm120-cu130
+```
+
+先把 tag 拆开看：`0.28.1rc1` 是 vLLM 基线版本，`vision11` 表示带视觉输入支持，
+`sm89-sm120` 是编译覆盖的算力架构（4090 是 SM89，Blackwell 是 SM120），`cu130`
+是 CUDA 13.0。
+
+线上实际用的那份镜像，元数据如下：
+
+| 项 | 值 |
+|---|---|
+| digest | `sha256:89d95823…`，11.9 GB，2026-09-16 构建 |
+| vLLM 版本 | `0.28.1rc1.dev517+glm53.dsv41.vision11.sm89sm120.cu130` |
+| PyTorch | `2.13.0+cu130` |
+| 基础镜像 | Ubuntu 24.04 + NVIDIA CUDA 13.0.3（devel） |
+| 构建源码 | <https://github.com/yhfgyyf/vllm-deepseek-v4-sm89> |
+| ENTRYPOINT | `vllm serve`，所以命令行直接接模型路径 |
+
+为什么只能用这个：官方 `vllm/vllm-openai:v0.32.0` 的模型注册表里根本没有
+`DeepseekV4` 这个架构（在 `_VLLM_MODELS` 里 grep 不到），也没有 `fp8_ds_mla`
+这个 KV 布局，`--kv-cache-dtype` 这个参数等于不存在。按镜像标签的说明，这个构建
+还一起带了 DeepSeek-V4-Flash/Vision 和 GLM-5.3-Flash，一份镜像同时覆盖 SM89 和
+SM120 两种卡。
+
+需要提醒的是，`patches/` 里的补丁是针对这个镜像里的文件写的。换成别的构建，
+行号会全部错位，得重新定位。
+
+---
+
 ## 需要的四个补丁
 
 镜像自带的 DeepSeek-V4 支持在 24 GB 显存 / 256 GiB 内存上起不来。四个补丁在
@@ -269,9 +303,8 @@ curl http://10.0.0.1:9000/v1/chat/completions \
 - **没有进程守护。** `restart=no`，没有 systemd unit。机器重启后要手动按
   memguard → 节点 A → 节点 B 的顺序拉起来，见
   [`docs/07-troubleshooting.md`](docs/07-troubleshooting.md#recovery-after-reboot)。
-- **只验证了一个镜像。** 官方 `vllm/vllm-openai:v0.32.0` 的模型注册表里没有
-  `DeepseekV4` 这个架构。本方案基于上面那个社区 SM89 构建，移植到新版 vLLM 需要
-  自己重新定位行号。
+- **只在 SM89 上验证过。** 镜像虽然也编了 SM120，但我们手上没有 Blackwell 的机器
+  实测。换新版 vLLM 的话，补丁得重新定位行号。
 
 ---
 
