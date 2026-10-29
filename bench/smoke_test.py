@@ -5,7 +5,7 @@ Checks, in order: model listing, non-stream chat, stream timing (TTFT + decode),
 reasoning/answer split, tool calling, and optional N-way concurrency.
 
     ./smoke_test.py
-    ./smoke_test.py --base http://10.0.0.1:9000/v1 --model /qwen-32b --concurrency 4
+    ./smoke_test.py --base http://10.0.0.1:9000/v1 --concurrency 4
 
 Exit code is non-zero if any check fails, so it is safe to use as a readiness gate.
 Stdlib only -- no pip install needed.

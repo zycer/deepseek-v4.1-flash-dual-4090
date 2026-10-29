@@ -41,7 +41,7 @@ PATCH_DIR="${PATCH_DIR:-$ROOT/patched}"    # built by apply-patches.sh
 CACHE_DIR="${CACHE_DIR:-$ROOT/.cache}"     # vllm/flashinfer/torch/tilelang compile cache
 
 # ---- serving ----
-SNAME="${SNAME:-deepseek-v4.1-flash-1017 /qwen-32b}"   # space separated, first is primary
+SNAME="${SNAME:-deepseek-v4.1-flash-1017}"   # space separated if you serve several names
 SP=/opt/venv/lib/python3.12/site-packages
 
 case "${MODE}" in

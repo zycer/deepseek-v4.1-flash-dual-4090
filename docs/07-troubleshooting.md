@@ -124,9 +124,8 @@ The served ids are whatever `--served-model-name` listed. Check:
 curl -s localhost:9000/v1/models | tr ',' '\n' | grep '"id"'
 ```
 
-Defaults here: `deepseek-v4.1-flash-1017` and `/qwen-32b`. Note the response body always
-echoes the **primary** name, even if you requested the alias — a few clients validate this
-and will fail.
+Default: `deepseek-v4.1-flash-1017`. Note the response body always echoes the **primary**
+name, even if you requested an alias — a few clients validate this and will fail.
 
 ### `address already in use`
 
