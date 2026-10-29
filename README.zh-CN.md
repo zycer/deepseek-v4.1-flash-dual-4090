@@ -86,35 +86,31 @@
 
 ## 用的哪个镜像
 
-官方 vLLM 跑不了这个模型，用的是社区构建的 SM89 镜像：
+镜像来自社区项目 [yhfgyyf/vllm-deepseek-v4-sm89](https://github.com/yhfgyyf/vllm-deepseek-v4-sm89)。
+这是一个 vLLM 的非官方分支，目的是让 DeepSeek-V4 系列和 GLM-5.3 能跑在 Ada（SM89）
+和 Blackwell（SM120）这类非数据中心的卡上。官方 vLLM 缺的东西它基本都补了：
+`fp8_ds_mla` KV 布局、稀疏 MLA 注意力后端、Engram 的 CPU offload、DSpark 投机解码、
+CED prefill。代码是 Apache-2.0，镜像发在 GHCR 上，不用登录就能拉。
 
 ```
 ghcr.io/yhfgyyf/vllm-deepseek-v4-sm89:0.28.1rc1-vision11-sm89-sm120-cu130
 ```
 
-先把 tag 拆开看：`0.28.1rc1` 是 vLLM 基线版本，`vision11` 表示带视觉输入支持，
-`sm89-sm120` 是编译覆盖的算力架构（4090 是 SM89，Blackwell 是 SM120），`cu130`
-是 CUDA 13.0。
-
-线上实际用的那份镜像，元数据如下：
+线上跑的那份，元数据如下：
 
 | 项 | 值 |
 |---|---|
 | digest | `sha256:89d95823…`，11.9 GB，2026-09-16 构建 |
-| vLLM 版本 | `0.28.1rc1.dev517+glm53.dsv41.vision11.sm89sm120.cu130` |
+| vLLM | `0.28.1rc1.dev517+glm53.dsv41.vision11.sm89sm120.cu130` |
 | PyTorch | `2.13.0+cu130` |
 | 基础镜像 | Ubuntu 24.04 + NVIDIA CUDA 13.0.3（devel） |
-| 构建源码 | <https://github.com/yhfgyyf/vllm-deepseek-v4-sm89> |
-| ENTRYPOINT | `vllm serve`，所以命令行直接接模型路径 |
 
-为什么只能用这个：官方 `vllm/vllm-openai:v0.32.0` 的模型注册表里根本没有
-`DeepseekV4` 这个架构（在 `_VLLM_MODELS` 里 grep 不到），也没有 `fp8_ds_mla`
-这个 KV 布局，`--kv-cache-dtype` 这个参数等于不存在。按镜像标签的说明，这个构建
-还一起带了 DeepSeek-V4-Flash/Vision 和 GLM-5.3-Flash，一份镜像同时覆盖 SM89 和
-SM120 两种卡。
+有一点要提前说明：上游 README 里验证过的 4090 是 **48 GB 版**，而且明确写了它的启动
+示例「不适用于普通 24 GB 版」。本仓库跑的是 24 GB 原版，靠跨机 TP=8×PP=2、Engram
+全量 offload 到主机内存，再加 `patches/` 里那几个补丁才成立，不要直接照抄上游的
+4090 启动参数。
 
-需要提醒的是，`patches/` 里的补丁是针对这个镜像里的文件写的。换成别的构建，
-行号会全部错位，得重新定位。
+另外 `patches/` 是针对这个构建里的文件写的，换成别的构建行号会全部错位。
 
 ---
 

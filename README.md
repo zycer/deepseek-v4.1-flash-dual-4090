@@ -91,17 +91,19 @@ error messages, is in [`docs/01-constraint-derivation.md`](docs/01-constraint-de
 
 ## The image
 
-Stock vLLM cannot run this model. What we used is a community SM89 build:
+The image comes from a community project,
+[yhfgyyf/vllm-deepseek-v4-sm89](https://github.com/yhfgyyf/vllm-deepseek-v4-sm89). It is
+an unofficial vLLM fork aimed at running the DeepSeek-V4 family and GLM-5.3 on Ada (SM89)
+and Blackwell (SM120) cards instead of datacenter parts. It fills in what stock vLLM is
+missing: the `fp8_ds_mla` KV layout, sparse MLA attention backends, Engram CPU offload,
+DSpark speculative decoding and CED prefill. Apache-2.0, published on GHCR, no login
+needed to pull.
 
 ```
 ghcr.io/yhfgyyf/vllm-deepseek-v4-sm89:0.28.1rc1-vision11-sm89-sm120-cu130
 ```
 
-Reading the tag: `0.28.1rc1` is the vLLM baseline, `vision11` means vision input
-support is included, `sm89-sm120` is the set of compute capabilities compiled in
-(4090 is SM89, Blackwell is SM120), and `cu130` is CUDA 13.0.
-
-Metadata of the exact image we ran:
+The exact build we ran:
 
 | | |
 |---|---|
@@ -109,17 +111,15 @@ Metadata of the exact image we ran:
 | vLLM | `0.28.1rc1.dev517+glm53.dsv41.vision11.sm89sm120.cu130` |
 | PyTorch | `2.13.0+cu130` |
 | Base image | Ubuntu 24.04 + NVIDIA CUDA 13.0.3 (devel) |
-| Build source | <https://github.com/yhfgyyf/vllm-deepseek-v4-sm89> |
-| Entrypoint | `vllm serve`, so the command line takes the model path directly |
 
-Why it is required: official `vllm/vllm-openai:v0.32.0` has no `DeepseekV4`
-architecture registered at all (nothing matching in `_VLLM_MODELS`) and no
-`fp8_ds_mla` KV layout, so `--kv-cache-dtype` does not exist there. According to the
-image labels, this build also carries DeepSeek-V4-Flash/Vision and GLM-5.3-Flash, and
-covers both SM89 and SM120 in one image.
+One thing to know up front: the 4090 upstream validated is the **48 GB** version, and its
+README states plainly that the 4090 launch example does not apply to the regular 24 GB
+cards. This repo runs on 24 GB cards, and only works because of cross-node TP=8×PP=2,
+offloading Engram entirely to host memory, plus the patches in `patches/`. Do not copy
+upstream's 4090 flags directly.
 
-One caveat: the diffs in `patches/` were written against the files inside this image.
-On a different build every line number will be off and the hunks need re-locating.
+Also, the diffs in `patches/` were written against the files inside this build. On a
+different build every line number will be off.
 
 ---
 
